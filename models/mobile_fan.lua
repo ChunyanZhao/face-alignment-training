@@ -8,7 +8,7 @@
 local cudnn = require 'cudnn'
 
 -- Define some short names
-local conv1 = cudnn.SpatialDepthWiseConvolution
+local conv1 = cudnn.SpatialConvolution
 local conv2 = cudnn.SpatialConvolution
 local batchnorm = nn.SpatialBatchNormalization
 local relu = cudnn.ReLU
@@ -23,7 +23,7 @@ local function convBlock(numIn, numOut, order)
     local cnet = nn.Sequential()
         :add(batchnorm(numIn,1e-5,false))
         :add(relu(true))
-        :add(conv1(numIn,numIn,3,3,1,1,1,1):noBias())
+        :add(conv1(numIn,numIn,3,3,1,1,1,1,numIn):noBias())
         :add(conv2(numIn,numOut/2,1,1,1,1,0,0):noBias())
         :add(nn.ConcatTable()
             :add(nn.Identity())
@@ -31,7 +31,7 @@ local function convBlock(numIn, numOut, order)
                 :add(nn.Sequential()
                     :add(batchnorm(numOut/2,1e-5,false))
                     :add(relu(true))
-                    :add(conv1(numOut/2,numOut/2,3,3,1,1,1,1):noBias())
+                    :add(conv1(numOut/2,numOut/2,3,3,1,1,1,1,numOut/2):noBias())
                     :add(conv2(numOut/2,numOut/4,1,1,1,1,0,0):noBias())
                 )
                 :add(nn.ConcatTable()
@@ -39,7 +39,7 @@ local function convBlock(numIn, numOut, order)
                     :add(nn.Sequential()
                         :add(batchnorm(numOut/4,1e-5,false))
                         :add(relu(true))
-                        :add(conv(numOut/4,numOut/4,3,3,1,1,1,1):noBias())
+                        :add(conv(numOut/4,numOut/4,3,3,1,1,1,1,numOut/4):noBias())
                         :add(conv(numOut/4,numOut/4,1,1,1,1,0,0):noBias())
                     )
                 )
@@ -58,7 +58,7 @@ local function skipLayer(numIn,numOut)
         return nn.Sequential()
             :add(batchnorm(numIn,1e-5,false))
             :add(relu(true))
-            :add(conv1(numIn,numIn,1,1):noBias())
+            :add(conv1(numIn,numIn,1,1,1,1,0,0,numIn):noBias())
             :add(conv2(numIn,numOut,1,1):noBias())
     end
 end
@@ -74,7 +74,7 @@ end
 
 local function lin(numIn,numOut,inp)
     -- Apply 1x1 convolution, stride 1, no padding
-    local l = conv1(numIn,numIn,1,1,1,1,0,0)(inp)
+    local l = conv1(numIn,numIn,1,1,1,1,0,0,numIn)(inp)
     l = conv2(numIn,numOut,1,1,1,1,0,0)(l)
     return relu(true)(batchnorm(numOut)(l))
 end
