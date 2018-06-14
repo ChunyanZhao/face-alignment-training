@@ -8,10 +8,10 @@
 local cudnn = require 'cudnn'
 
 -- Define some short names
-local conv1 = cudnn.SpatialConvolution
-local conv2 = cudnn.SpatialConvolution
+local conv = cudnn.SpatialConvolution
 local batchnorm = nn.SpatialBatchNormalization
 local relu = cudnn.ReLU
+local relu6 = cudnn.ClippedReLU
 local upsample = nn.SpatialUpSamplingNearest
 
 -- Opts
@@ -19,29 +19,27 @@ local nModules = 1
 local nFeats = 256
 local nStack = 8
 
+local function mconv(numIn, numOut, k, d, p)
+    local cnet = nn.Sequential()
+                :add(conv(numIn,numIn,k,k,d,d,p,p,numIn):noBias())
+                :add(batchnorm(numIn,1e-5,false))
+                :add(relu6(6,true))
+                :add(conv2(numIn,numOut,1,1,1,1,0,0):noBias())
+                :add(batchnorm(numOut,1e-5,false))
+                :add(relu6(6,true))
+    return cnet
+end
+
 local function convBlock(numIn, numOut, order)
     local cnet = nn.Sequential()
-        :add(batchnorm(numIn,1e-5,false))
-        :add(relu(true))
-        :add(conv1(numIn,numIn,3,3,1,1,1,1,numIn):noBias())
-        :add(conv2(numIn,numOut/2,1,1,1,1,0,0):noBias())
+        :add(mconv(numIn, numOut/2, 3, 1, 1))
         :add(nn.ConcatTable()
             :add(nn.Identity())
             :add(nn.Sequential()
-                :add(nn.Sequential()
-                    :add(batchnorm(numOut/2,1e-5,false))
-                    :add(relu(true))
-                    :add(conv1(numOut/2,numOut/2,3,3,1,1,1,1,numOut/2):noBias())
-                    :add(conv2(numOut/2,numOut/4,1,1,1,1,0,0):noBias())
-                )
+                :add(mconv(numOut/2, numOut/4, 3, 1, 1))
                 :add(nn.ConcatTable()
                     :add(nn.Identity())
-                    :add(nn.Sequential()
-                        :add(batchnorm(numOut/4,1e-5,false))
-                        :add(relu(true))
-                        :add(conv(numOut/4,numOut/4,3,3,1,1,1,1,numOut/4):noBias())
-                        :add(conv(numOut/4,numOut/4,1,1,1,1,0,0):noBias())
-                    )
+                    :add(mconv(numOut/4, numOut/4, 3, 1, 1))
                 )
                 :add(nn.JoinTable(2))
             )
@@ -56,10 +54,9 @@ local function skipLayer(numIn,numOut)
         return nn.Identity()
     else
         return nn.Sequential()
+            :add(conv(numIn,numOut,1,1):noBias())
             :add(batchnorm(numIn,1e-5,false))
             :add(relu(true))
-            :add(conv1(numIn,numIn,1,1,1,1,0,0,numIn):noBias())
-            :add(conv2(numIn,numOut,1,1):noBias())
     end
 end
 
@@ -74,8 +71,7 @@ end
 
 local function lin(numIn,numOut,inp)
     -- Apply 1x1 convolution, stride 1, no padding
-    local l = conv1(numIn,numIn,1,1,1,1,0,0,numIn)(inp)
-    l = conv2(numIn,numOut,1,1,1,1,0,0)(l)
+    local l = conv(numIn,numOut,1,1,1,1,0,0)(inp)
     return relu(true)(batchnorm(numOut)(l))
 end
 
